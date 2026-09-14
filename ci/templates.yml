@@ -1,0 +1,6 @@
+# Hidden template jobs (leading dot) reused via `extends`.
+.log-job:
+  before_script:
+    - echo ">>> [$CI_JOB_STAGE] $CI_JOB_NAME starting"
+  after_script:
+    - echo "<<< [$CI_JOB_STAGE] $CI_JOB_NAME done (status=$CI_JOB_STATUS)"

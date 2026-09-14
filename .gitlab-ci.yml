@@ -1,0 +1,93 @@
+# Playpen pipeline: every job is a NOP / log-only. Exercises common CI features.
+
+include:
+  - local: ci/templates.yml
+
+default:
+  image: alpine:3.20
+  interruptible: true
+
+variables:
+  GREETING: "hello from the playpen"
+  DEPLOY_ENV:
+    value: "dev"
+    options: ["dev", "staging", "prod"]
+    description: "Target environment (shown in Run pipeline UI)"
+
+stages: [prep, build, test, deploy, cleanup]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# --- prep ---------------------------------------------------------------
+dump-env:
+  extends: .log-job
+  stage: prep
+  script:
+    - echo "$GREETING"
+    - env | grep -E '^(CI_|GITLAB_)' | sort
+
+# --- build: artifacts + cache + parallel matrix -------------------------
+build:
+  extends: .log-job
+  stage: build
+  parallel:
+    matrix:
+      - ARCH: [amd64, arm64]
+        FLAVOUR: [slim, full]
+  cache:
+    key: "build-$ARCH"
+    paths: [.cache/]
+  script:
+    - mkdir -p .cache dist
+    - echo "pretend-building $ARCH/$FLAVOUR" | tee dist/build-$ARCH-$FLAVOUR.txt
+    - date >> .cache/last-build
+  artifacts:
+    paths: [dist/]
+    expire_in: 1 hour
+
+# --- test: needs (DAG), retry, allow_failure, rules ---------------------
+unit-tests:
+  extends: .log-job
+  stage: test
+  needs: ["build"]
+  script:
+    - ls -la dist/
+    - echo "all 0 tests passed"
+
+flaky-test:
+  extends: .log-job
+  stage: test
+  needs: []
+  retry: 2
+  allow_failure: true
+  script:
+    - echo "failing on purpose"
+    - exit 1
+
+only-on-main:
+  extends: .log-job
+  stage: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script: echo "running because branch is default"
+
+# --- deploy: manual gate + environment ----------------------------------
+deploy:
+  extends: .log-job
+  stage: deploy
+  when: manual
+  environment:
+    name: $DEPLOY_ENV
+  script:
+    - echo "would deploy to $DEPLOY_ENV (NOP)"
+
+# --- cleanup: always runs -----------------------------------------------
+cleanup:
+  extends: .log-job
+  stage: cleanup
+  when: always
+  script: echo "cleanup (NOP)"

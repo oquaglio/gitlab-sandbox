@@ -1,0 +1,3 @@
+# Variables injected by gitlab-ci-local (stand-in for project CI/CD variables).
+GREETING: "hello from gitlab-ci-local"
+DEPLOY_ENV: "dev"

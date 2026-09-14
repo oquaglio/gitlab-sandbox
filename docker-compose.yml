@@ -1,0 +1,42 @@
+# Full GitLab CE + real gitlab-runner (docker executor). Heavy: ~4GB RAM, ~5 min first boot.
+# Local playpen only — do not expose these ports beyond localhost.
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    hostname: gitlab
+    shm_size: 256m
+    ports:
+      - "127.0.0.1:8929:8929"
+      - "127.0.0.1:2224:22"
+    environment:
+      GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-playpen-Root-Pw-123}
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab:8929'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2224
+        prometheus_monitoring['enable'] = false
+        puma['worker_processes'] = 0
+        sidekiq['concurrency'] = 5
+    volumes:
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+    networks: [ci]
+
+  runner:
+    image: gitlab/gitlab-runner:latest
+    depends_on: [gitlab]
+    volumes:
+      - runner-config:/etc/gitlab-runner
+      # NOTE: grants the runner root-equivalent access to the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [ci]
+
+volumes:
+  gitlab-config:
+  gitlab-logs:
+  gitlab-data:
+  runner-config:
+
+networks:
+  ci:
+    name: gitlab-playpen
