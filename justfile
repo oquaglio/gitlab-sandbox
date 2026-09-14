@@ -17,7 +17,7 @@ run *args:
 
 # Run a single job (plus its needs), e.g. `just job unit-tests`
 job name:
-    {{gcl}} --needs "{{name}}"
+    {{gcl}} "{{name}}" --needs
 
 # Include manual jobs, e.g. deploy
 run-manual:
