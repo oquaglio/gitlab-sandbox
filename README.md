@@ -46,9 +46,6 @@ scripts/register-runner.sh      # creates + registers an instance runner via the
   sudo apt install -y rsync      # Debian/Ubuntu
   ```
 - A git repo. gitlab-ci-local **only sees files git tracks or has staged**, so run `git add -A` after adding files.
-- Optional: if the repo has an `origin` remote, set its default branch to silence the `refs/remotes/origin/HEAD is not a symbolic ref` warning. This only sets a local ref and pushes nothing:
-  ```sh
-  git remote set-head origin main
   ```
 
 ## Light mode: gitlab-ci-local
@@ -71,6 +68,7 @@ Run output goes to `.gitlab-ci-local/` (gitignored).
 ## Heavy mode: GitLab CE + real runner
 
 ```sh
+echo "GITLAB_ROOT_PASSWORD=$(openssl rand -base64 18)" > .env   # once; .env is gitignored
 just up            # start GitLab + runner
 just logs          # optional: watch GitLab boot (Ctrl-C to stop tailing)
 just register      # waits for readiness, creates an instance runner, registers it
@@ -79,7 +77,7 @@ just register      # waits for readiness, creates an instance runner, registers 
 Then:
 
 1. Add `127.0.0.1 gitlab` to your hosts file so links in the UI resolve. On WSL, edit the **Windows** hosts file for browser access.
-2. Open <http://localhost:8929> and sign in as `root` with `$GITLAB_ROOT_PASSWORD` (default is in `docker-compose.yml`).
+2. Open <http://localhost:8929> and sign in as `root` with the password from `.env`.
 3. Create a blank project, then push this repo to it:
    ```sh
    git remote add playpen http://localhost:8929/root/<project>.git
@@ -97,7 +95,7 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 ## Security notes
 
 - The runner mounts `/var/run/docker.sock`, which gives it **root-equivalent access to the host**. Only run pipelines you trust, and don't reuse this setup outside a playpen.
-- The default root password is in plaintext in `docker-compose.yml`. Override it: `GITLAB_ROOT_PASSWORD='...' just up`.
+- The root password lives in a gitignored `.env`; compose refuses to start without it. It's only read on first boot — changing it later requires `just nuke`.
 - Ports are bound to `127.0.0.1` only.
 - `register-runner.sh` creates a root personal access token (`api`, `create_runner`) that expires after 1 day.
 
@@ -105,6 +103,8 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 
 | Symptom | Fix |
 |---|---|
+| GitLab container exits; logs say `Password must not contain commonly used combinations` | Use a stronger `GITLAB_ROOT_PASSWORD`, then `just nuke && just up` (the first boot left a half-seeded DB). |
+| `a network with name gitlab-playpen exists but was not created for project` | Leftover from an older checkout/project name. `docker compose -p <old-name> down`, then `just up`. |
 | `kW.union is not a function` | Node < 22 is being used. Run through `just`, which pulls in Node 22. |
 | `rsync: command not found` | `sudo dnf install -y rsync` |
 | `Local include file cannot be found` | The file isn't tracked. Run `git add -A`. |

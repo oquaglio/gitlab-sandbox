@@ -9,7 +9,8 @@ services:
       - "127.0.0.1:8929:8929"
       - "127.0.0.1:2224:22"
     environment:
-      GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-playpen-Root-Pw-123}
+      # No default: GitLab rejects common passwords and the container dies on first boot.
+      GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:?set GITLAB_ROOT_PASSWORD in .env (see README)}
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'http://gitlab:8929'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
