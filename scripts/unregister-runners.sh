@@ -10,7 +10,8 @@
 set -euo pipefail
 
 compose() { docker compose "$@"; }
-RUNNER_DESC="${RUNNER_DESC:-playpen}"
+# Matches both playpen runners: "playpen" and "playpen-dind".
+RUNNER_DESC_PREFIX="${RUNNER_DESC_PREFIX:-playpen}"
 
 # 1. Best effort: lets gitlab-runner revoke its tokens cleanly. Partially fails
 #    when config.toml holds entries GitLab has already dropped, so steps 2 and 3
@@ -19,9 +20,9 @@ compose exec -T runner gitlab-runner unregister --all-runners >/dev/null 2>&1 ||
 
 # 2. Authoritative for GitLab's side. Uses gitlab-rails rather than the REST API
 #    to avoid parsing JSON with shell tools.
-echo "Removing '$RUNNER_DESC' runners from GitLab..."
+echo "Removing '$RUNNER_DESC_PREFIX*' runners from GitLab..."
 compose exec -T gitlab gitlab-rails runner "
-  rs = Ci::Runner.where(description: '$RUNNER_DESC')
+  rs = Ci::Runner.where('description LIKE ?', '$RUNNER_DESC_PREFIX%')
   puts %(  found #{rs.count} runner(s): #{rs.map(&:id).join(', ')})
   rs.each { |r| r.destroy! }
 " 2>/dev/null | grep '  found' || echo "  (none)"

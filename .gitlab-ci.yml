@@ -55,6 +55,9 @@ docker-build:
   extends: .log-job
   stage: build
   needs: []
+  # Only the privileged 'playpen-dind' runner carries this tag; every other job
+  # is untagged and runs on the unprivileged 'playpen' runner.
+  tags: [dind]
   image: docker:27-cli
   services:
     - name: docker:27-dind

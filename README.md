@@ -17,7 +17,7 @@ ci/templates.yml                # hidden .log-job template (include + extends)
 .gitlab-ci-local-variables.yml  # stand-in for project CI/CD variables (light mode)
 justfile                        # all commands
 docker-compose.yml              # GitLab CE + gitlab-runner (heavy mode)
-scripts/register-runner.sh      # idempotently registers exactly one instance runner
+scripts/register-runner.sh      # idempotently registers the two instance runners
 scripts/unregister-runners.sh   # removes all runners from GitLab *and* config.toml
 Dockerfile                      # trivial image built by the `docker-build` job
 ```
@@ -37,6 +37,7 @@ Dockerfile                      # trivial image built by the `docker-build` job
 | `when: manual` + `environment` | `deploy` |
 | `when: always` | `cleanup` |
 | `services` + docker-in-docker (`docker:dind`) | `docker-build` |
+| `tags` routing a job to a specific runner | `docker-build` (`dind`) |
 | Build + push to the built-in container registry (`$CI_REGISTRY_IMAGE`, `$CI_JOB_TOKEN`) | `docker-build` |
 
 ## Prerequisites
@@ -92,13 +93,30 @@ Changing the registry settings only needs a container recreate, not a `just nuke
 
 ## Runners
 
-`just register` is idempotent — it reconciles to **exactly one** instance runner however
-things started, so it's safe to re-run after changing executor settings:
+The playpen registers **two** instance runners, both as `[[runners]]` blocks in the same runner
+container (a second container isn't needed):
+
+| Runner | Tags | `run_untagged` | `privileged` | Runs |
+|---|---|---|---|---|
+| `playpen` | — | `true` | `false` | every ordinary job |
+| `playpen-dind` | `dind` | `false` | `true` | `docker-build` only |
+
+The split exists so privileged mode is scoped to the one job that needs it, rather than applying
+to every `alpine` echo job in the pipeline. `config.toml` is set to `concurrent = 2` so the two
+don't serialise.
+
+A runner only matches a job when it carries **all** the job's tags, so `tags: [dind]` on
+`docker-build` pins it to the privileged runner, and `run_untagged=false` stops that runner
+taking anything else. Adding a job with a tag no runner carries leaves it pending forever rather
+than failing — that's the usual cause of a "stuck" pipeline.
+
+`just register` is idempotent — it reconciles to exactly these two however things started, so
+it's safe to re-run after changing executor settings:
 
 ```sh
 just runners     # show what's currently registered
-just register    # reconcile to exactly one runner (deletes any existing ones)
-just unregister  # remove all runners (prompts); `just register` re-creates one
+just register    # reconcile to exactly the two runners (deletes any existing ones)
+just unregister  # remove all runners (prompts); `just register` re-creates them
 ```
 
 Both commands share `scripts/unregister-runners.sh`, which resets **both** sources of truth,
@@ -111,8 +129,8 @@ because they drift apart independently:
 3. The runner container's `config.toml` — every `[[runners]]` block is stripped, keeping the
    global section. A `.bak` is left beside it.
 
-Steps 2 and 3 are what guarantee the outcome, and `register` asserts it ended with exactly one
-runner (exiting non-zero otherwise).
+Steps 2 and 3 are what guarantee the outcome, and `register` asserts it ended with exactly two
+runners (exiting non-zero otherwise).
 
 > **Why unregistering alone isn't enough.** `gitlab-runner unregister` removes the runner
 > *manager* — the local registration. With token-based registration the runner itself is a
@@ -159,7 +177,7 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 - The root password lives in a gitignored `.env`; compose refuses to start without it. It's only read on first boot — changing it later requires `just nuke`.
 - Ports are bound to `127.0.0.1` only.
 - `register-runner.sh` creates a root personal access token (`api`, `create_runner`) that expires after 1 day.
-- The runner is registered with `--docker-privileged` so `docker:dind` works. A privileged job container can escape to the host kernel — this is the standard dind trade-off and another reason to only run pipelines you trust here.
+- Only the `playpen-dind` runner is registered with `--docker-privileged`, and only jobs tagged `dind` reach it. A privileged job container can escape to the host kernel, so keeping it off the default runner means an ordinary job can't get it by accident. Still the standard dind trade-off, and a reason to only run pipelines you trust here.
 - `docker-build` talks to dind over TLS (`DOCKER_TLS_VERIFY=1`) rather than the unauthenticated `tcp://docker:2375`, so nothing else on the job network can drive the daemon.
 - The container registry runs over **plain HTTP** on `127.0.0.1:5005`, and dind is started with `--insecure-registry=gitlab:5005` so it will talk to it. That means registry traffic (including the `docker login` bearer token) is unencrypted on the `gitlab-playpen` network, and dind skips TLS verification for that host. Acceptable for a localhost-bound playpen; do not copy this into anything real — use `https://` and a proper certificate.
 
@@ -173,7 +191,8 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 | `rsync: command not found` | `sudo dnf install -y rsync` |
 | `docker push`: `server gave HTTP response to HTTPS client` | dind isn't allowing the plain-HTTP registry. Check the `command: ["--insecure-registry=gitlab:5005"]` on the dind service, and that `docker info` inside dind lists `gitlab:5005` under Insecure Registries. |
 | `docker login`: `denied` / 401 | The registry needs `$CI_REGISTRY_USER` + `$CI_REGISTRY_PASSWORD` (job token). Outside a job, use a PAT with `write_registry` scope. |
-| `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Light mode: use `just dind`. Heavy mode: the runner lacks `privileged = true` / the `/certs/client` volume — re-run `just register` (it reconciles to one correctly-configured runner), or `just runner-dind` to patch in place without re-registering. |
+| `docker-build`: `open /certs/client/ca.pem: no such file or directory`, or dind logs `mount: permission denied (are you root?)` | The job ran on the unprivileged `playpen` runner. Check `docker-build` still has `tags: [dind]`, and re-run `just register`. Light mode: use `just dind`. |
+| A job sits pending forever | No runner carries all its tags. `just runners` shows what's registered; an untagged job needs `playpen`, a `dind`-tagged one needs `playpen-dind`. |
 | Jobs stuck pending, or duplicate runners in the UI | `just runners` to see what's registered, then `just register` to reconcile down to one. |
 | A runner still shows in the GitLab UI after unregistering it by hand | `gitlab-runner unregister` only removes the local manager, not the GitLab-side runner. Use `just unregister`, which deletes both. |
 | `docker-build`: `nc: bad address 'docker'` / `wait-for-it.sh: timeout` | The dind service couldn't start — it needs privileged mode. `just dind`. |

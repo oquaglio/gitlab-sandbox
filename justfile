@@ -37,7 +37,7 @@ preview:
 up:
     docker compose up -d
 
-# Create + register an instance runner (idempotent: replaces any existing ones)
+# Register both runners: 'playpen' (untagged) + 'playpen-dind' (privileged)
 register:
     ./scripts/register-runner.sh
 
@@ -54,14 +54,6 @@ unregister:
     ./scripts/unregister-runners.sh
     docker compose restart runner
     @just runners
-
-# Patch an ALREADY-registered runner for dind (privileged + /certs/client volume)
-runner-dind:
-    docker compose exec -T runner sh -c 'cp /etc/gitlab-runner/config.toml /etc/gitlab-runner/config.toml.bak && \
-      sed -i "s/^    privileged = false/    privileged = true/" /etc/gitlab-runner/config.toml && \
-      sed -i "s#^    volumes = \[\"/cache\"\]#    volumes = [\"/cache\", \"/certs/client\"]#" /etc/gitlab-runner/config.toml'
-    docker compose restart runner
-    @docker compose exec -T runner grep -E "privileged|volumes" /etc/gitlab-runner/config.toml
 
 # Tail GitLab logs
 logs svc="gitlab":
