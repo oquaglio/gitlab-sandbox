@@ -124,7 +124,7 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 | `a network with name gitlab-playpen exists but was not created for project` | Leftover from an older checkout/project name. `docker compose -p <old-name> down`, then `just up`. |
 | `kW.union is not a function` | Node < 22 is being used. Run through `just`, which pulls in Node 22. |
 | `rsync: command not found` | `sudo dnf install -y rsync` |
-| `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Use `just dind` (light mode), or re-run `just register` so the runner gets `--docker-privileged` and the `/certs/client` volume (heavy mode). |
+| `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Light mode: use `just dind`. Heavy mode: the runner lacks `privileged = true` / the `/certs/client` volume — run `just runner-dind`. Don't re-run `just register`, which adds a *second* runner instead of fixing the existing one. |
 | `docker-build`: `nc: bad address 'docker'` / `wait-for-it.sh: timeout` | The dind service couldn't start — it needs privileged mode. `just dind`. |
 | `docker-build`: `failed to read dockerfile` | `Dockerfile` isn't tracked by git; `git add Dockerfile`. |
 | `Local include file cannot be found` | The file isn't tracked. Run `git add -A`. |
