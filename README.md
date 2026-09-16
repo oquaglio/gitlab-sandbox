@@ -87,6 +87,12 @@ Then:
 
 Jobs run as sibling containers on the host Docker daemon, on the `gitlab-playpen` network.
 
+With **rootless Docker**, point compose at your user socket before `just up`:
+
+```sh
+export DOCKER_SOCK=$XDG_RUNTIME_DIR/docker.sock
+```
+
 ```sh
 just down          # stop, keep data
 just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for confirmation)
@@ -94,7 +100,7 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 
 ## Security notes
 
-- The runner mounts `/var/run/docker.sock`, which gives it **root-equivalent access to the host**. Only run pipelines you trust, and don't reuse this setup outside a playpen.
+- The runner mounts the Docker socket (`$DOCKER_SOCK`, default `/var/run/docker.sock`), which gives it full control of the daemon: **root-equivalent on the host** with rootful Docker, your user's privileges with rootless. Only run pipelines you trust, and don't reuse this setup outside a playpen.
 - The root password lives in a gitignored `.env`; compose refuses to start without it. It's only read on first boot — changing it later requires `just nuke`.
 - Ports are bound to `127.0.0.1` only.
 - `register-runner.sh` creates a root personal access token (`api`, `create_runner`) that expires after 1 day.
@@ -108,5 +114,6 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 | `kW.union is not a function` | Node < 22 is being used. Run through `just`, which pulls in Node 22. |
 | `rsync: command not found` | `sudo dnf install -y rsync` |
 | `Local include file cannot be found` | The file isn't tracked. Run `git add -A`. |
+| Runner logs `permission denied` / `Cannot connect to the Docker daemon` (rootless) | `DOCKER_SOCK` wasn't set, so the root socket path was mounted. Export it, then `just down && just up`. |
 | `just register` hangs on dots | GitLab is still booting. First boot can take 5+ minutes. |
 | Jobs stuck "pending" in the UI | Check the runner: `just logs runner`. Re-run `just register` if needed. |
