@@ -18,6 +18,7 @@ ci/templates.yml                # hidden .log-job template (include + extends)
 justfile                        # all commands
 docker-compose.yml              # GitLab CE + gitlab-runner (heavy mode)
 scripts/register-runner.sh      # creates + registers an instance runner via the API
+Dockerfile                      # trivial image built by the `docker-build` job
 ```
 
 ## Pipeline features demonstrated
@@ -34,6 +35,7 @@ scripts/register-runner.sh      # creates + registers an instance runner via the
 | `rules` on default branch | `only-on-main` |
 | `when: manual` + `environment` | `deploy` |
 | `when: always` | `cleanup` |
+| `services` + docker-in-docker (`docker:dind`) | `docker-build` |
 
 ## Prerequisites
 
@@ -57,7 +59,14 @@ just run           # run the whole pipeline (skips manual jobs)
 just job unit-tests  # run one job plus the jobs it needs
 just run-manual    # also run the manual `deploy` job
 just run --help    # any gitlab-ci-local flag passes straight through
+just dind          # run the docker-in-docker `docker-build` job
 ```
+
+`docker-build` needs two extra things gitlab-ci-local doesn't do by default, which `just dind`
+supplies: `--privileged` (so the `docker:dind` service can start) and a named volume shared at
+`/certs/client` (so the job's docker client can find the TLS certs dind generates). Plain
+`just run` will fail that job. The Dockerfile must be tracked by git — gitlab-ci-local only
+copies tracked files into the job container.
 
 Set variables in `.gitlab-ci-local-variables.yml`, or per run with `just run --variable DEPLOY_ENV=prod`.
 
@@ -104,6 +113,8 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 - The root password lives in a gitignored `.env`; compose refuses to start without it. It's only read on first boot — changing it later requires `just nuke`.
 - Ports are bound to `127.0.0.1` only.
 - `register-runner.sh` creates a root personal access token (`api`, `create_runner`) that expires after 1 day.
+- The runner is registered with `--docker-privileged` so `docker:dind` works. A privileged job container can escape to the host kernel — this is the standard dind trade-off and another reason to only run pipelines you trust here.
+- `docker-build` talks to dind over TLS (`DOCKER_TLS_VERIFY=1`) rather than the unauthenticated `tcp://docker:2375`, so nothing else on the job network can drive the daemon.
 
 ## Troubleshooting
 
@@ -113,6 +124,9 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 | `a network with name gitlab-playpen exists but was not created for project` | Leftover from an older checkout/project name. `docker compose -p <old-name> down`, then `just up`. |
 | `kW.union is not a function` | Node < 22 is being used. Run through `just`, which pulls in Node 22. |
 | `rsync: command not found` | `sudo dnf install -y rsync` |
+| `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Use `just dind` (light mode), or re-run `just register` so the runner gets `--docker-privileged` and the `/certs/client` volume (heavy mode). |
+| `docker-build`: `nc: bad address 'docker'` / `wait-for-it.sh: timeout` | The dind service couldn't start — it needs privileged mode. `just dind`. |
+| `docker-build`: `failed to read dockerfile` | `Dockerfile` isn't tracked by git; `git add Dockerfile`. |
 | `Local include file cannot be found` | The file isn't tracked. Run `git add -A`. |
 | Runner logs `permission denied` / `Cannot connect to the Docker daemon` (rootless) | `DOCKER_SOCK` wasn't set, so the root socket path was mounted. Export it, then `just down && just up`. |
 | `just register` hangs on dots | GitLab is still booting. First boot can take 5+ minutes. |

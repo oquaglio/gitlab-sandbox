@@ -49,6 +49,28 @@ build:
     paths: [dist/]
     expire_in: 1 hour
 
+# --- build: docker-in-docker ---------------------------------------------
+# Needs a runner registered with privileged mode (see scripts/register-runner.sh).
+docker-build:
+  extends: .log-job
+  stage: build
+  needs: []
+  image: docker:27-cli
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "/certs/client"
+    IMAGE_TAG: "playpen:$CI_COMMIT_SHORT_SHA"
+  script:
+    - docker info
+    - docker build -t "$IMAGE_TAG" .
+    - docker run --rm "$IMAGE_TAG"
+    - docker image ls "$IMAGE_TAG"
+
 # --- test: needs (DAG), retry, allow_failure, rules ---------------------
 unit-tests:
   extends: .log-job

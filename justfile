@@ -19,6 +19,10 @@ run *args:
 job name:
     {{gcl}} "{{name}}" --needs
 
+# Run the docker-in-docker build job (needs privileged + a shared certs volume)
+dind:
+    {{gcl}} docker-build --privileged --volume gcl-dind-certs:/certs/client
+
 # Include manual jobs, e.g. deploy
 run-manual:
     {{gcl}} --manual deploy

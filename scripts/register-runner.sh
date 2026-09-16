@@ -24,13 +24,17 @@ RUNNER_TOKEN=$(compose exec -T gitlab curl -sf -X POST \
   --data "runner_type=instance_type" --data "run_untagged=true" --data "description=playpen" \
   http://localhost:8929/api/v4/user/runners | sed -E 's/.*"token":"([^"]+)".*/\1/')
 
-echo "Registering runner container..."
+# --docker-privileged + the /certs/client volume are what make docker:dind work.
+# Privileged containers can escape to the host daemon; fine for a local playpen only.
+echo "Registering runner container (privileged, for docker-in-docker)..."
 compose exec -T runner gitlab-runner register --non-interactive \
   --url http://gitlab:8929 \
   --token "$RUNNER_TOKEN" \
   --executor docker \
   --docker-image alpine:3.20 \
   --docker-network-mode gitlab-playpen \
+  --docker-privileged \
+  --docker-volumes /certs/client \
   --clone-url http://gitlab:8929
 
 compose restart runner
