@@ -43,15 +43,17 @@ register:
 
 # Show registered runners (config.toml view)
 runners:
-    @docker compose exec -T runner sh -c 'grep -E "^\\[\\[runners\\]\\]|^  name =|^  id =|privileged|volumes" /etc/gitlab-runner/config.toml || echo "(none registered)"'
+    @docker compose exec -T runner sh -c 'grep -E "^\\[\\[runners\\]\\]|^  name =|^  id =|privileged|volumes" /etc/gitlab-runner/config.toml || echo "(none registered)"' </dev/null
 
 # Unregister ALL runners (removes them from GitLab too); `just register` re-creates one
 unregister:
-    @echo "This unregisters every runner in config.toml and removes it from GitLab."
-    @docker compose exec -T runner sh -c 'grep -cE "^\\[\\[runners\\]\\]" /etc/gitlab-runner/config.toml || echo 0' | xargs -I{} echo "  runners to remove: {}"
+    @echo "This removes every playpen runner, from both GitLab and config.toml:"
+    @docker compose exec -T runner sh -c 'echo "  config.toml entries: $(grep -cE "^\\[\\[runners\\]\\]" /etc/gitlab-runner/config.toml || true)"' </dev/null
+    @docker compose exec -T gitlab gitlab-rails runner 'rs = Ci::Runner.where(description: "playpen"); puts %(  in GitLab: #{rs.count} -> ids #{rs.map(&:id).join(", ")})' </dev/null 2>/dev/null | grep "in GitLab"
     @read -p "Type 'yes' to confirm: " c && [ "$c" = yes ]
-    docker compose exec -T runner gitlab-runner unregister --all-runners
+    ./scripts/unregister-runners.sh
     docker compose restart runner
+    @just runners
 
 # Patch an ALREADY-registered runner for dind (privileged + /certs/client volume)
 runner-dind:

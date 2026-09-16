@@ -18,6 +18,7 @@ ci/templates.yml                # hidden .log-job template (include + extends)
 justfile                        # all commands
 docker-compose.yml              # GitLab CE + gitlab-runner (heavy mode)
 scripts/register-runner.sh      # idempotently registers exactly one instance runner
+scripts/unregister-runners.sh   # removes all runners from GitLab *and* config.toml
 Dockerfile                      # trivial image built by the `docker-build` job
 ```
 
@@ -100,12 +101,24 @@ just register    # reconcile to exactly one runner (deletes any existing ones)
 just unregister  # remove all runners (prompts); `just register` re-creates one
 ```
 
-It resets both sources of truth, because they drift apart independently: GitLab's own runner
-list (via `gitlab-rails`) and the runner container's `config.toml` (every `[[runners]]` block is
-stripped, keeping the global section; a `.bak` is left beside it). `gitlab-runner unregister
---all-runners` is attempted first so tokens get revoked cleanly, but it partially fails once
-`config.toml` holds entries GitLab has already dropped, so the script does not depend on it.
-The script asserts it ended with one runner and exits non-zero otherwise.
+Both commands share `scripts/unregister-runners.sh`, which resets **both** sources of truth,
+because they drift apart independently:
+
+1. `gitlab-runner unregister --all-runners` — best effort, so tokens get revoked cleanly. Its
+   result is not relied on: it partially fails once `config.toml` holds entries GitLab has
+   already dropped.
+2. GitLab's runner list, via `gitlab-rails` — authoritative for the server side.
+3. The runner container's `config.toml` — every `[[runners]]` block is stripped, keeping the
+   global section. A `.bak` is left beside it.
+
+Steps 2 and 3 are what guarantee the outcome, and `register` asserts it ended with exactly one
+runner (exiting non-zero otherwise).
+
+> **Why unregistering alone isn't enough.** `gitlab-runner unregister` removes the runner
+> *manager* — the local registration. With token-based registration the runner itself is a
+> GitLab-side object created through the API, so unregistering clears `config.toml` but leaves
+> the runner orphaned in the UI (`managers=0`, still listed, still showing as online). Deleting
+> it server-side is a separate step.
 
 ## Heavy mode: GitLab CE + real runner
 
@@ -162,6 +175,7 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 | `docker login`: `denied` / 401 | The registry needs `$CI_REGISTRY_USER` + `$CI_REGISTRY_PASSWORD` (job token). Outside a job, use a PAT with `write_registry` scope. |
 | `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Light mode: use `just dind`. Heavy mode: the runner lacks `privileged = true` / the `/certs/client` volume — re-run `just register` (it reconciles to one correctly-configured runner), or `just runner-dind` to patch in place without re-registering. |
 | Jobs stuck pending, or duplicate runners in the UI | `just runners` to see what's registered, then `just register` to reconcile down to one. |
+| A runner still shows in the GitLab UI after unregistering it by hand | `gitlab-runner unregister` only removes the local manager, not the GitLab-side runner. Use `just unregister`, which deletes both. |
 | `docker-build`: `nc: bad address 'docker'` / `wait-for-it.sh: timeout` | The dind service couldn't start — it needs privileged mode. `just dind`. |
 | `docker-build`: `failed to read dockerfile` | `Dockerfile` isn't tracked by git; `git add Dockerfile`. |
 | `Local include file cannot be found` | The file isn't tracked. Run `git add -A`. |

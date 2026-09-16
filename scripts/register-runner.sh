@@ -8,7 +8,7 @@ set -euo pipefail
 
 compose() { docker compose "$@"; }
 
-RUNNER_DESC="playpen"
+export RUNNER_DESC="playpen"
 PAT_NAME="playpen-runner-setup"
 
 echo "Waiting for GitLab to be healthy (can take several minutes)..."
@@ -27,32 +27,7 @@ compose exec -T gitlab gitlab-rails runner "
 " >/dev/null
 
 # --- reconcile: end up with exactly one runner, however we started ------------
-# Two sources of truth can drift apart: the runner's config.toml and GitLab's
-# own runner list. Reset both rather than trusting either.
-
-# 1. Best effort: lets gitlab-runner revoke its tokens cleanly. Often partially
-#    fails when config.toml holds entries whose tokens GitLab already dropped,
-#    so its result is not relied on -- steps 2 and 3 are what guarantee state.
-compose exec -T runner gitlab-runner unregister --all-runners >/dev/null 2>&1 || true
-
-# 2. Authoritative: delete every '$RUNNER_DESC' runner GitLab still lists.
-#    Done through gitlab-rails rather than the REST API to avoid parsing JSON
-#    with shell tools.
-echo "Removing existing '$RUNNER_DESC' runners from GitLab..."
-compose exec -T gitlab gitlab-rails runner "
-  rs = Ci::Runner.where(description: '$RUNNER_DESC')
-  puts %(  found #{rs.count} existing runner(s): #{rs.map(&:id).join(', ')})
-  rs.each { |r| r.destroy! }
-" 2>/dev/null | grep '  found' || echo "  (none)"
-
-# 3. Authoritative: strip every [[runners]] block, keeping the global settings.
-echo "Resetting config.toml to its global section..."
-compose exec -T runner sh -c '
-  f=/etc/gitlab-runner/config.toml
-  [ -f "$f" ] || exit 0
-  cp "$f" "$f.bak"
-  awk "/^\\[\\[runners\\]\\]/{exit} {print}" "$f.bak" > "$f"
-'
+"$(dirname "$0")/unregister-runners.sh"
 
 # --- create + register exactly one runner ---------------------------------
 echo "Creating instance runner..."
