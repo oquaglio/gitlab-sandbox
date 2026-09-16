@@ -59,16 +59,28 @@ docker-build:
   services:
     - name: docker:27-dind
       alias: docker
+      # The playpen registry is plain HTTP, so dind must be told to allow it.
+      command: ["--insecure-registry=gitlab:5005"]
   variables:
     DOCKER_HOST: tcp://docker:2376
     DOCKER_TLS_CERTDIR: "/certs"
     DOCKER_TLS_VERIFY: 1
     DOCKER_CERT_PATH: "/certs/client"
-    IMAGE_TAG: "playpen:$CI_COMMIT_SHORT_SHA"
+    IMAGE_TAG: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
   script:
     - docker info
     - docker build -t "$IMAGE_TAG" .
     - docker run --rm "$IMAGE_TAG"
+    # gitlab-ci-local predefines CI_REGISTRY but no credentials; only a real
+    # GitLab sets CI_REGISTRY_USER, so use that to decide whether to push.
+    - |
+      if [ -n "$CI_REGISTRY_USER" ]; then
+        echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+        docker push "$IMAGE_TAG"
+        docker logout "$CI_REGISTRY"
+      else
+        echo "no registry credentials -- built only, not pushing"
+      fi
     - docker image ls "$IMAGE_TAG"
 
 # --- test: needs (DAG), retry, allow_failure, rules ---------------------
