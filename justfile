@@ -37,9 +37,21 @@ preview:
 up:
     docker compose up -d
 
-# Create + register an instance runner (run after `up`)
+# Create + register an instance runner (idempotent: replaces any existing ones)
 register:
     ./scripts/register-runner.sh
+
+# Show registered runners (config.toml view)
+runners:
+    @docker compose exec -T runner sh -c 'grep -E "^\\[\\[runners\\]\\]|^  name =|^  id =|privileged|volumes" /etc/gitlab-runner/config.toml || echo "(none registered)"'
+
+# Unregister ALL runners (removes them from GitLab too); `just register` re-creates one
+unregister:
+    @echo "This unregisters every runner in config.toml and removes it from GitLab."
+    @docker compose exec -T runner sh -c 'grep -cE "^\\[\\[runners\\]\\]" /etc/gitlab-runner/config.toml || echo 0' | xargs -I{} echo "  runners to remove: {}"
+    @read -p "Type 'yes' to confirm: " c && [ "$c" = yes ]
+    docker compose exec -T runner gitlab-runner unregister --all-runners
+    docker compose restart runner
 
 # Patch an ALREADY-registered runner for dind (privileged + /certs/client volume)
 runner-dind:

@@ -17,7 +17,7 @@ ci/templates.yml                # hidden .log-job template (include + extends)
 .gitlab-ci-local-variables.yml  # stand-in for project CI/CD variables (light mode)
 justfile                        # all commands
 docker-compose.yml              # GitLab CE + gitlab-runner (heavy mode)
-scripts/register-runner.sh      # creates + registers an instance runner via the API
+scripts/register-runner.sh      # idempotently registers exactly one instance runner
 Dockerfile                      # trivial image built by the `docker-build` job
 ```
 
@@ -36,6 +36,7 @@ Dockerfile                      # trivial image built by the `docker-build` job
 | `when: manual` + `environment` | `deploy` |
 | `when: always` | `cleanup` |
 | `services` + docker-in-docker (`docker:dind`) | `docker-build` |
+| Build + push to the built-in container registry (`$CI_REGISTRY_IMAGE`, `$CI_JOB_TOKEN`) | `docker-build` |
 
 ## Prerequisites
 
@@ -62,6 +63,10 @@ just run --help    # any gitlab-ci-local flag passes straight through
 just dind          # run the docker-in-docker `docker-build` job
 ```
 
+In light mode there is no registry, so `docker-build` builds and runs the image but skips the
+push (it keys off `$CI_REGISTRY_USER`, which only a real GitLab sets). The image lives in the
+dind service container and is discarded when the job ends — it never reaches the host daemon.
+
 `docker-build` needs two extra things gitlab-ci-local doesn't do by default, which `just dind`
 supplies: `--privileged` (so the `docker:dind` service can start) and a named volume shared at
 `/certs/client` (so the job's docker client can find the TLS certs dind generates). Plain
@@ -73,6 +78,34 @@ Set variables in `.gitlab-ci-local-variables.yml`, or per run with `just run --v
 Warnings like `git rev-parse HEAD`, `No such remote 'origin'` or `origin/HEAD is not a symbolic ref` mean the repo has no commits, no remote, or no remote default branch set. The tool falls back to defaults and keeps going. See Prerequisites for the `set-head` fix.
 
 Run output goes to `.gitlab-ci-local/` (gitignored).
+
+## Container registry
+
+Enabled over HTTP on port 5005 (`registry_external_url 'http://gitlab:5005'` in `docker-compose.yml`).
+`docker-build` pushes to `$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA` using `$CI_JOB_TOKEN`, exactly as
+a real GitLab pipeline would. Browse pushed images at
+<http://localhost:8929/root/gitlab-sandbox/container_registry>.
+
+Changing the registry settings only needs a container recreate, not a `just nuke`:
+`docker compose up -d gitlab` (volumes are preserved; reconfigure takes a few minutes on boot).
+
+## Runners
+
+`just register` is idempotent — it reconciles to **exactly one** instance runner however
+things started, so it's safe to re-run after changing executor settings:
+
+```sh
+just runners     # show what's currently registered
+just register    # reconcile to exactly one runner (deletes any existing ones)
+just unregister  # remove all runners (prompts); `just register` re-creates one
+```
+
+It resets both sources of truth, because they drift apart independently: GitLab's own runner
+list (via `gitlab-rails`) and the runner container's `config.toml` (every `[[runners]]` block is
+stripped, keeping the global section; a `.bak` is left beside it). `gitlab-runner unregister
+--all-runners` is attempted first so tokens get revoked cleanly, but it partially fails once
+`config.toml` holds entries GitLab has already dropped, so the script does not depend on it.
+The script asserts it ended with one runner and exits non-zero otherwise.
 
 ## Heavy mode: GitLab CE + real runner
 
@@ -115,6 +148,7 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 - `register-runner.sh` creates a root personal access token (`api`, `create_runner`) that expires after 1 day.
 - The runner is registered with `--docker-privileged` so `docker:dind` works. A privileged job container can escape to the host kernel — this is the standard dind trade-off and another reason to only run pipelines you trust here.
 - `docker-build` talks to dind over TLS (`DOCKER_TLS_VERIFY=1`) rather than the unauthenticated `tcp://docker:2375`, so nothing else on the job network can drive the daemon.
+- The container registry runs over **plain HTTP** on `127.0.0.1:5005`, and dind is started with `--insecure-registry=gitlab:5005` so it will talk to it. That means registry traffic (including the `docker login` bearer token) is unencrypted on the `gitlab-playpen` network, and dind skips TLS verification for that host. Acceptable for a localhost-bound playpen; do not copy this into anything real — use `https://` and a proper certificate.
 
 ## Troubleshooting
 
@@ -124,7 +158,10 @@ just nuke          # DESTRUCTIVE: delete all GitLab/runner volumes (asks for con
 | `a network with name gitlab-playpen exists but was not created for project` | Leftover from an older checkout/project name. `docker compose -p <old-name> down`, then `just up`. |
 | `kW.union is not a function` | Node < 22 is being used. Run through `just`, which pulls in Node 22. |
 | `rsync: command not found` | `sudo dnf install -y rsync` |
-| `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Light mode: use `just dind`. Heavy mode: the runner lacks `privileged = true` / the `/certs/client` volume — run `just runner-dind`. Don't re-run `just register`, which adds a *second* runner instead of fixing the existing one. |
+| `docker push`: `server gave HTTP response to HTTPS client` | dind isn't allowing the plain-HTTP registry. Check the `command: ["--insecure-registry=gitlab:5005"]` on the dind service, and that `docker info` inside dind lists `gitlab:5005` under Insecure Registries. |
+| `docker login`: `denied` / 401 | The registry needs `$CI_REGISTRY_USER` + `$CI_REGISTRY_PASSWORD` (job token). Outside a job, use a PAT with `write_registry` scope. |
+| `docker-build`: `open /certs/client/ca.pem: no such file or directory` | Light mode: use `just dind`. Heavy mode: the runner lacks `privileged = true` / the `/certs/client` volume — re-run `just register` (it reconciles to one correctly-configured runner), or `just runner-dind` to patch in place without re-registering. |
+| Jobs stuck pending, or duplicate runners in the UI | `just runners` to see what's registered, then `just register` to reconcile down to one. |
 | `docker-build`: `nc: bad address 'docker'` / `wait-for-it.sh: timeout` | The dind service couldn't start — it needs privileged mode. `just dind`. |
 | `docker-build`: `failed to read dockerfile` | `Dockerfile` isn't tracked by git; `git add Dockerfile`. |
 | `Local include file cannot be found` | The file isn't tracked. Run `git add -A`. |
