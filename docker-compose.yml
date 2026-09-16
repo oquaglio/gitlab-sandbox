@@ -28,8 +28,9 @@ services:
     depends_on: [gitlab]
     volumes:
       - runner-config:/etc/gitlab-runner
-      # NOTE: grants the runner root-equivalent access to the host Docker daemon.
-      - /var/run/docker.sock:/var/run/docker.sock
+      # NOTE: grants the runner full control of the host Docker daemon (root-equivalent if rootful).
+      # Rootless Docker: export DOCKER_SOCK=$XDG_RUNTIME_DIR/docker.sock
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     networks: [ci]
 
 volumes:
