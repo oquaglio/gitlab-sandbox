@@ -94,6 +94,47 @@ docker-build:
       fi
     - docker image ls "$IMAGE_TAG"
 
+# --- OIDC: short-lived identity instead of stored credentials -----------
+# GitLab mints a signed JWT per job, scoped to an audience. A cloud provider is
+# configured to trust GitLab's OIDC issuer and match specific claims, then hands
+# back temporary credentials -- so no long-lived access key is ever stored in a
+# CI variable.
+#
+# SAFETY: this job decodes and prints the CLAIMS only, never $PLAYPEN_JWT itself.
+# The payload is base64, not encrypted, so the claims are not secret -- but the
+# signature is what makes the token usable, and echoing the whole JWT would put a
+# working credential in the job log until it expires.
+oidc-claims:
+  extends: .log-job
+  stage: prep
+  needs: []
+  id_tokens:
+    PLAYPEN_JWT:
+      aud: "https://playpen.local/sts"
+  script:
+    - |
+      if [ -z "${PLAYPEN_JWT:-}" ]; then
+        echo "no id token here -- gitlab-ci-local does not mint JWTs; run this in heavy mode"
+        exit 0
+      fi
+    - |
+      # JWT = header.payload.signature, each base64url. Decode the middle part
+      # only: base64url -> base64 needs -_ swapped and the padding restored.
+      payload=$(printf '%s' "$PLAYPEN_JWT" | cut -d. -f2)
+      case $(( ${#payload} % 4 )) in
+        2) payload="${payload}==" ;;
+        3) payload="${payload}=" ;;
+      esac
+      echo "--- claims a cloud provider can match on ---"
+      printf '%s' "$payload" | tr '_-' '/+' | base64 -d | tr ',' '\n'
+    - |
+      echo
+      echo "--- an AWS IAM role trust policy would pin these ---"
+      echo "  Condition.StringEquals: aud  = https://playpen.local/sts"
+      echo "  Condition.StringLike:   sub  = project_path:<group>/<project>:ref_type:branch:ref:main"
+      echo "Pinning sub is the part people skip -- aud alone lets ANY project on"
+      echo "this GitLab instance assume the role."
+
 # --- dotenv: pass computed values between jobs --------------------------
 # artifacts:paths moves FILES between jobs; artifacts:reports:dotenv moves
 # VARIABLES. Downstream jobs see $BUILD_TAG as a real CI variable, no file

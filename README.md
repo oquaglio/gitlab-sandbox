@@ -47,6 +47,37 @@ Dockerfile                      # trivial image built by the `docker-build` job
 | `spec:inputs` with `options`, `$[[ inputs.x ]]`, conditional `include:rules` | `greeting`, `lint-yaml` |
 | `artifacts:reports:dotenv` -- pass computed **variables** between jobs | `generate-tag` -> `use-tag` |
 | Dynamic parent/child pipelines (`trigger:include:artifact`, `strategy: depend`) | `generate-child` -> `child` |
+| `id_tokens` -- per-job OIDC JWT, decoded to show the claims a cloud provider matches | `oidc-claims` |
+
+### OIDC (`id_tokens`)
+
+GitLab mints a signed JWT per job, scoped to an `aud`. A cloud provider is configured to trust
+GitLab's OIDC issuer and match specific claims, then returns temporary credentials -- so no
+long-lived access key is stored in a CI variable at all. This is the modern replacement for
+`AWS_ACCESS_KEY_ID` in project settings.
+
+`oidc-claims` requests a token and prints its **claims**, so you can see what a trust policy has
+to match:
+
+```
+aud  https://playpen.local/sts
+sub  project_path:root/gitlab-sandbox:ref_type:branch:ref:main
+iss  http://gitlab:8929
+ref  main
+```
+
+An AWS IAM role trust policy pins `aud` with `StringEquals` and `sub` with `StringLike`. **Pinning
+`sub` is the step people skip** -- `aud` alone lets *any* project on the same GitLab instance
+assume the role.
+
+Two safety notes. The job never prints `$PLAYPEN_JWT` itself: the payload is base64, not
+encrypted, so the claims are not secret, but the signature is what makes the token usable and a
+full JWT in a job log is a working credential until it expires. And the `aud` should be distinct
+per provider -- reusing one audience across providers means a token minted for one is accepted by
+another.
+
+gitlab-ci-local does not mint JWTs, so `just job oidc-claims` prints a notice and exits 0; the
+real claims need heavy mode.
 
 ### dotenv vs artifacts
 
