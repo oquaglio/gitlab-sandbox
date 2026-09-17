@@ -10,28 +10,31 @@
 #
 # The point of the split: a consumer turns whole feature sets on and off with a
 # flag, and swaps implementations without touching the job graph.
-# `type: boolean` rather than strings with options: ["true","false"] -- the type
-# itself is the validation, so a typo'd `True` is a type error instead of relying
-# on an options list. greeting_variant stays a string because it is an enum, which
-# is exactly what options: is for.
+# One input per module, not a toggle plus a separate variant. `greeting` carries
+# both the on/off decision and the implementation choice, so the relationship is
+# structural: you cannot select a variant for a module that is off, and
+# `include_greeting: false` + `greeting_variant: "fancy"` -- legal but meaningless
+# under two inputs -- no longer expressible.
+#
+# lint stays a plain boolean because it has one implementation and nothing to pick.
+#
+# A selector shared across SEVERAL modules (BHP's `asset`) is the opposite case and
+# belongs as its own input -- it is genuinely orthogonal to any one module's toggle.
 spec:
   inputs:
-    include_greeting: { type: boolean, default: true, description: "Include the greeting jobs" }
-    include_lint:     { type: boolean, default: true, description: "Include the lint job" }
-    greeting_variant: { default: "simple", options: ["simple", "fancy"], description: "Greeting implementation" }
+    greeting:     { default: "simple", options: ["off", "simple", "fancy"], description: "Greeting module: off, or which implementation" }
+    include_lint: { type: boolean, default: true, description: "Include the lint job" }
 ---
 
 # Surfaced as ordinary CI variables so jobs can echo what was selected.
 variables:
-  INCLUDE_GREETING: "$[[ inputs.include_greeting ]]"
+  GREETING_MODE: "$[[ inputs.greeting ]]"
   INCLUDE_LINT: "$[[ inputs.include_lint ]]"
-  GREETING_VARIANT: "$[[ inputs.greeting_variant ]]"
 
 include:
   - local: '/ci/modules/greeting.yml'
     inputs:
-      include_greeting: $[[ inputs.include_greeting ]]
-      greeting_variant: $[[ inputs.greeting_variant ]]
+      greeting: $[[ inputs.greeting ]]
   # lint has exactly one implementation, so there is no routing decision to make.
   # A ci/modules/*.yml file only earns its place when it picks between 2+ impls
   # (see greeting); for a bare on/off toggle, gating the template and the jobs

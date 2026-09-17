@@ -1,14 +1,12 @@
 # Greeting module -- routing only.
-# Expected inputs:
-#   include_greeting  in {true,false}
-#   greeting_variant  in {simple,fancy}
-# No `description:` and no `options:` on the forwarded enum -- only the entry
-# point's descriptions are user-facing, and it already validated the value. This
-# is the duplication to avoid when one input is threaded through many modules.
+# Expected input: greeting in {off, simple, fancy}
+#
+# No `description:`/`options:` here -- only the entry point's are user-facing and
+# it has already validated the value. This is the duplication that multiplies when
+# one input is threaded through many modules.
 spec:
   inputs:
-    include_greeting: { type: boolean, default: false }
-    greeting_variant: { default: "simple" }
+    greeting: { default: "off" }
 ---
 
 include:
@@ -16,12 +14,12 @@ include:
   # `.greeting`, so whichever lands wins by being the only one present.
   - local: '/ci/templates/greeting_simple.yml'
     rules:
-      - if: '$[[ inputs.include_greeting ]] == true && "$[[ inputs.greeting_variant ]]" == "simple"'
+      - if: '"$[[ inputs.greeting ]]" == "simple"'
   - local: '/ci/templates/greeting_fancy.yml'
     rules:
-      - if: '$[[ inputs.include_greeting ]] == true && "$[[ inputs.greeting_variant ]]" == "fancy"'
+      - if: '"$[[ inputs.greeting ]]" == "fancy"'
   # The concrete jobs are variant-agnostic -- they just extend `.greeting`.
   # Swapping the variant changes behaviour, not the job graph.
   - local: '/ci/jobs/greeting.yml'
     rules:
-      - if: '$[[ inputs.include_greeting ]] == true'
+      - if: '"$[[ inputs.greeting ]]" != "off"'

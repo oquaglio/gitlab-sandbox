@@ -26,9 +26,8 @@ include:
   - local: ci/templates.yml
   - local: ci/modular.yml
     inputs:
-      include_greeting: $1
+      greeting: "$1"
       include_lint: $2
-      greeting_variant: "$3"
 stages: [prep, build, test, deploy, cleanup]
 YAML
 }
@@ -42,16 +41,16 @@ job_names() {
         | sed 's/.*: *"//; s/"$//' | sort | tr '\n' ' ' | sed 's/ $//'
 }
 
-# check <desc> <include_greeting> <include_lint> <variant> <expected job names>
+# check <desc> <greeting> <include_lint> <expected job names>
 check() {
     local desc="$1" got
-    probe_root "$2" "$3" "$4"
+    probe_root "$2" "$3"
     got=$(job_names)
-    if [ "$got" = "$5" ]; then
+    if [ "$got" = "$4" ]; then
         printf 'ok    %-26s -> %s\n' "$desc" "${got:-<no jobs>}"
     else
         printf 'FAIL  %-26s\n        expected: %s\n        got:      %s\n' \
-            "$desc" "${5:-<no jobs>}" "${got:-<no jobs>}"
+            "$desc" "${4:-<no jobs>}" "${got:-<no jobs>}"
         fail=1
     fi
 }
@@ -62,7 +61,7 @@ variant_routes() {
     local variant="$1" want="$2" needle="$3"
     local desc found
     desc="variant=$variant $want needle"
-    probe_root "true" "false" "$variant"
+    probe_root "$variant" "false"
     if "${GCL[@]}" --file "$ROOT" --preview 2>/dev/null | grep -qF "$needle"; then
         found=present
     else
@@ -77,12 +76,12 @@ variant_routes() {
 }
 
 echo "--- job sets ---"
-#      description            greeting  lint   variant  expected
-check "both on, simple"       true      true   simple   "greeting lint-yaml"
-check "both on, fancy"        true      true   fancy    "greeting lint-yaml"
-check "greeting off"          false     true   simple   "lint-yaml"
-check "lint off"              true      false  simple   "greeting"
-check "both off"              false     false  simple   ""
+#      description            greeting  lint    expected
+check "greeting simple"       simple    true    "greeting lint-yaml"
+check "greeting fancy"        fancy     true    "greeting lint-yaml"
+check "greeting off"          off       true    "lint-yaml"
+check "lint off"              simple    false   "greeting"
+check "both off"              off       false   ""
 
 echo "--- variant routing ---"
 variant_routes fancy  present "routed by ci/modules/greeting.yml"

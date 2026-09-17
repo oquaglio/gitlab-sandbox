@@ -63,15 +63,23 @@ The consumer only sets flags:
 include:
   - local: ci/modular.yml
     inputs:
-      include_greeting: "true"      # false drops the greeting jobs entirely
-      include_lint: "true"
-      greeting_variant: "simple"    # or "fancy" -- swaps the implementation
+      greeting: "simple"      # off | simple | fancy
+      include_lint: true
 ```
 
-Two things this buys you. `include_greeting: "false"` removes a whole feature set without
-touching any job definition. And `greeting_variant` swaps which `ci/templates/greeting_*.yml`
-defines `.greeting`, so behaviour changes while the job graph stays identical --
-`ci/jobs/greeting.yml` never mentions a variant.
+Two things this buys you. `greeting: "off"` removes a whole feature set without touching any job
+definition. And `simple` vs `fancy` swaps which `ci/templates/greeting_*.yml` defines `.greeting`,
+so behaviour changes while the job graph stays identical -- `ci/jobs/greeting.yml` never mentions
+an implementation.
+
+**One input per module, not a toggle plus a separate variant.** `greeting` carries both the on/off
+decision and the implementation choice, which makes the relationship structural: a variant cannot
+be selected for a module that is off. Under two inputs, `include_greeting: false` +
+`greeting_variant: "fancy"` was legal and silently meaningless. `include_lint` stays a plain
+boolean because lint has one implementation and nothing to pick.
+
+The opposite case is a selector shared across *several* modules -- BHP's `asset` -- which belongs
+as its own input, because it genuinely is orthogonal to any one module's toggle.
 
 Check either with `just list` (job graph) or `just preview` (fully-resolved YAML).
 

@@ -3,4 +3,4 @@
 .greeting:
   image: alpine:3.20
   script:
-    - echo "hello from the $GREETING_VARIANT greeting module"
+    - echo "hello from the $GREETING_MODE greeting module"
