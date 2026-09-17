@@ -15,6 +15,10 @@ list:
 run *args:
     {{gcl}} {{args}}
 
+# Assert each ci/modular.yml input combination yields the expected jobs
+check-matrix:
+    ./scripts/check-ci-matrix.sh
+
 # Run a single job (plus its needs), e.g. `just job unit-tests`
 job name:
     {{gcl}} "{{name}}" --needs

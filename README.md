@@ -15,13 +15,14 @@ Two ways to run it:
 .gitlab-ci.yml                  # the playpen pipeline
 ci/templates.yml                # hidden .log-job template (include + extends)
 ci/modular.yml                  # modular example: entry point, spec:inputs toggles
-ci/modules/                     #   routing layer -- which modules/variants to include
+ci/modules/                     #   routing layer -- only where a variant choice exists
 ci/templates/                   #   implementation layer -- hidden .jobs
 ci/jobs/                        #   instantiation layer -- concrete jobs
 .gitlab-ci-local-variables.yml  # stand-in for project CI/CD variables (light mode)
 justfile                        # all commands
 docker-compose.yml              # GitLab CE + gitlab-runner (heavy mode)
 scripts/register-runner.sh      # idempotently registers the two instance runners
+scripts/check-ci-matrix.sh      # asserts each modular.yml input combo yields the right jobs
 scripts/unregister-runners.sh   # removes all runners from GitLab *and* config.toml
 Dockerfile                      # trivial image built by the `docker-build` job
 ```
@@ -52,7 +53,7 @@ a shared "base project include" is consumed by many stacks. Three layers, each w
 
 | Layer | Responsibility | Contains |
 |---|---|---|
-| `ci/modules/*.yml` | **route** -- decide *whether* and *which variant* to include | `spec:inputs` + `include:` with `rules:`. No job bodies. |
+| `ci/modules/*.yml` | **route** -- decide *which variant* to include | `spec:inputs` + `include:` with `rules:`. No job bodies. |
 | `ci/templates/*.yml` | **implement** | hidden `.jobs`, reused via `extends` |
 | `ci/jobs/*.yml` | **instantiate** | concrete jobs: `extends` a template, pick a stage |
 
@@ -73,6 +74,30 @@ defines `.greeting`, so behaviour changes while the job graph stays identical --
 `ci/jobs/greeting.yml` never mentions a variant.
 
 Check either with `just list` (job graph) or `just preview` (fully-resolved YAML).
+
+**A module file only earns its place when it picks between two or more implementations.** `greeting`
+has two, so `ci/modules/greeting.yml` exists. `lint` has one, so there is no `ci/modules/lint.yml` --
+`ci/modular.yml` gates its template and jobs file directly. One less file, one less hop.
+
+**Verify combinations before pushing**, with `just check-matrix`:
+
+```
+--- job sets ---
+ok    both on, simple            -> greeting lint-yaml
+ok    greeting off               -> lint-yaml
+ok    lint off                   -> greeting
+ok    both off                   -> <no jobs>
+--- variant routing ---
+ok    variant=fancy present needle -> present
+```
+
+This exists because the pattern fails *silently*: a wrong `rules:` expression does not error, it
+includes nothing, and the job simply is not in the pipeline. A typo'd input **name** is a hard
+error; a typo'd input **value** (`"True"`) is an invisible omission. `scripts/check-ci-matrix.sh`
+asserts the expected job set for each combination, so that omission becomes a non-zero exit.
+
+It runs locally rather than as a pipeline job: it drives `gitlab-ci-local`, which needs the repo's
+git metadata and so does not work nested inside a job container.
 
 Note `ci/modular.yml` deliberately does not declare `stages:`. A real base include owns the
 stage list, but `stages` does not merge across included files -- the last definition wins -- so

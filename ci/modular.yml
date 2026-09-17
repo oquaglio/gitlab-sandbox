@@ -37,9 +37,16 @@ include:
     inputs:
       include_greeting: $[[ inputs.include_greeting ]]
       greeting_variant: $[[ inputs.greeting_variant ]]
-  - local: '/ci/modules/lint.yml'
-    inputs:
-      include_lint: $[[ inputs.include_lint ]]
+  # lint has exactly one implementation, so there is no routing decision to make.
+  # A ci/modules/*.yml file only earns its place when it picks between 2+ impls
+  # (see greeting); for a bare on/off toggle, gating the template and the jobs
+  # file directly is one less file and one less hop.
+  - local: '/ci/templates/lint.yml'
+    rules:
+      - if: '"$[[ inputs.include_lint ]]" == "true"'
+  - local: '/ci/jobs/lint.yml'
+    rules:
+      - if: '"$[[ inputs.include_lint ]]" == "true"'
 
 # NOTE: deliberately no `stages:` here. base_project_include owns the stage list,
 # but `stages` does not merge across included files -- the last definition wins --
