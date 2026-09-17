@@ -26,8 +26,8 @@ include:
   - local: ci/templates.yml
   - local: ci/modular.yml
     inputs:
-      include_greeting: "$1"
-      include_lint: "$2"
+      include_greeting: $1
+      include_lint: $2
       greeting_variant: "$3"
 stages: [prep, build, test, deploy, cleanup]
 YAML

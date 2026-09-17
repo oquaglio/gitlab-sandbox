@@ -10,20 +10,15 @@
 #
 # The point of the split: a consumer turns whole feature sets on and off with a
 # flag, and swaps implementations without touching the job graph.
+# `type: boolean` rather than strings with options: ["true","false"] -- the type
+# itself is the validation, so a typo'd `True` is a type error instead of relying
+# on an options list. greeting_variant stays a string because it is an enum, which
+# is exactly what options: is for.
 spec:
   inputs:
-    include_greeting:
-      description: "Include the greeting jobs"
-      default: "true"
-      options: ["true", "false"]
-    include_lint:
-      description: "Include the lint job"
-      default: "true"
-      options: ["true", "false"]
-    greeting_variant:
-      description: "Which greeting implementation to wire in"
-      default: "simple"
-      options: ["simple", "fancy"]
+    include_greeting: { type: boolean, default: true, description: "Include the greeting jobs" }
+    include_lint:     { type: boolean, default: true, description: "Include the lint job" }
+    greeting_variant: { default: "simple", options: ["simple", "fancy"], description: "Greeting implementation" }
 ---
 
 # Surfaced as ordinary CI variables so jobs can echo what was selected.
@@ -43,10 +38,10 @@ include:
   # file directly is one less file and one less hop.
   - local: '/ci/templates/lint.yml'
     rules:
-      - if: '"$[[ inputs.include_lint ]]" == "true"'
+      - if: '$[[ inputs.include_lint ]] == true'
   - local: '/ci/jobs/lint.yml'
     rules:
-      - if: '"$[[ inputs.include_lint ]]" == "true"'
+      - if: '$[[ inputs.include_lint ]] == true'
 
 # NOTE: deliberately no `stages:` here. base_project_include owns the stage list,
 # but `stages` does not merge across included files -- the last definition wins --
