@@ -6,7 +6,7 @@ include:
   # drop a whole feature set; change greeting_variant to swap implementations.
   - local: ci/modular.yml
     inputs:
-      greeting: "fancy" # off | simple | fancy
+      greeting: "off" # off | simple | fancy
       include_lint: true
 
 default:
