@@ -1,0 +1,10 @@
+# Greeting implementation: fancy.
+# Same contract as greeting_simple.yml (`.greeting`), louder output. Only one of
+# the two is ever included, so the name never collides at runtime.
+.greeting:
+  image: alpine:3.20
+  script:
+    - echo "=================================="
+    - echo "  hello from the $GREETING_VARIANT greeting module"
+    - echo "  routed by ci/modules/greeting.yml"
+    - echo "=================================="

@@ -1,0 +1,47 @@
+# Modular pipeline entry point.
+#
+# Three layers, each with one job:
+#   modules/    route    -- decide WHETHER and WHICH VARIANT to include. No job bodies.
+#   templates/  implement-- hidden (.dot) jobs, reused via `extends`.
+#   jobs/       instantiate -- concrete jobs that extend a template and pick a stage.
+#
+#   .gitlab-ci.yml -> ci/modular.yml -> ci/modules/<domain>.yml -> ci/templates/*.yml
+#                                                              -> ci/jobs/<domain>.yml
+#
+# The point of the split: a consumer turns whole feature sets on and off with a
+# flag, and swaps implementations without touching the job graph.
+spec:
+  inputs:
+    include_greeting:
+      description: "Include the greeting jobs"
+      default: "true"
+      options: ["true", "false"]
+    include_lint:
+      description: "Include the lint job"
+      default: "true"
+      options: ["true", "false"]
+    greeting_variant:
+      description: "Which greeting implementation to wire in"
+      default: "simple"
+      options: ["simple", "fancy"]
+---
+
+# Surfaced as ordinary CI variables so jobs can echo what was selected.
+variables:
+  INCLUDE_GREETING: "$[[ inputs.include_greeting ]]"
+  INCLUDE_LINT: "$[[ inputs.include_lint ]]"
+  GREETING_VARIANT: "$[[ inputs.greeting_variant ]]"
+
+include:
+  - local: '/ci/modules/greeting.yml'
+    inputs:
+      include_greeting: $[[ inputs.include_greeting ]]
+      greeting_variant: $[[ inputs.greeting_variant ]]
+  - local: '/ci/modules/lint.yml'
+    inputs:
+      include_lint: $[[ inputs.include_lint ]]
+
+# NOTE: deliberately no `stages:` here. base_project_include owns the stage list,
+# but `stages` does not merge across included files -- the last definition wins --
+# so declaring it here would clobber .gitlab-ci.yml's. These jobs reuse the
+# stages already defined there.

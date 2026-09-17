@@ -1,0 +1,6 @@
+# Lint implementation. NOP/log-only, like every other job in this playpen.
+.lint_yaml:
+  image: alpine:3.20
+  script:
+    - echo "would lint these YAML files:"
+    - find . -name '*.yml' -not -path './.git/*' | sort

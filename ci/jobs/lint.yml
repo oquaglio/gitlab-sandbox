@@ -1,0 +1,7 @@
+# Concrete lint job.
+lint-yaml:
+  extends:
+    - .log-job
+    - .lint_yaml
+  stage: test
+  needs: []

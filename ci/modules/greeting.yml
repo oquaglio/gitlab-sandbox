@@ -1,0 +1,28 @@
+# Greeting module -- routing only.
+# Expected inputs:
+#   include_greeting  in {true,false}
+#   greeting_variant  in {simple,fancy}
+spec:
+  inputs:
+    include_greeting:
+      default: "false"
+      options: ["true", "false"]
+    greeting_variant:
+      default: "simple"
+      options: ["simple", "fancy"]
+---
+
+include:
+  # Exactly one implementation is pulled in, chosen by the variant. Both define
+  # `.greeting`, so whichever lands wins by being the only one present.
+  - local: '/ci/templates/greeting_simple.yml'
+    rules:
+      - if: '"$[[ inputs.include_greeting ]]" == "true" && "$[[ inputs.greeting_variant ]]" == "simple"'
+  - local: '/ci/templates/greeting_fancy.yml'
+    rules:
+      - if: '"$[[ inputs.include_greeting ]]" == "true" && "$[[ inputs.greeting_variant ]]" == "fancy"'
+  # The concrete jobs are variant-agnostic -- they just extend `.greeting`.
+  # Swapping the variant changes behaviour, not the job graph.
+  - local: '/ci/jobs/greeting.yml'
+    rules:
+      - if: '"$[[ inputs.include_greeting ]]" == "true"'

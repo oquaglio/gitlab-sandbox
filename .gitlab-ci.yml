@@ -2,6 +2,13 @@
 
 include:
   - local: ci/templates.yml
+  # Modular job structure (modules -> templates -> jobs). Flip a toggle off to
+  # drop a whole feature set; change greeting_variant to swap implementations.
+  - local: ci/modular.yml
+    inputs:
+      include_greeting: "true"
+      include_lint: "true"
+      greeting_variant: "simple"
 
 default:
   image: alpine:3.20

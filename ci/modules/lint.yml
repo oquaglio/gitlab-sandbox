@@ -1,0 +1,15 @@
+# Lint module -- routing only. No variants, so a single on/off toggle.
+spec:
+  inputs:
+    include_lint:
+      default: "false"
+      options: ["true", "false"]
+---
+
+include:
+  - local: '/ci/templates/lint.yml'
+    rules:
+      - if: '"$[[ inputs.include_lint ]]" == "true"'
+  - local: '/ci/jobs/lint.yml'
+    rules:
+      - if: '"$[[ inputs.include_lint ]]" == "true"'

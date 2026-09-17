@@ -1,0 +1,8 @@
+# Concrete greeting job. Note it never mentions a variant -- ci/modules/greeting.yml
+# already decided which `.greeting` this inherits.
+greeting:
+  extends:
+    - .log-job
+    - .greeting
+  stage: prep
+  needs: []

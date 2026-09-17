@@ -14,6 +14,10 @@ Two ways to run it:
 ```
 .gitlab-ci.yml                  # the playpen pipeline
 ci/templates.yml                # hidden .log-job template (include + extends)
+ci/modular.yml                  # modular example: entry point, spec:inputs toggles
+ci/modules/                     #   routing layer -- which modules/variants to include
+ci/templates/                   #   implementation layer -- hidden .jobs
+ci/jobs/                        #   instantiation layer -- concrete jobs
 .gitlab-ci-local-variables.yml  # stand-in for project CI/CD variables (light mode)
 justfile                        # all commands
 docker-compose.yml              # GitLab CE + gitlab-runner (heavy mode)
@@ -39,6 +43,40 @@ Dockerfile                      # trivial image built by the `docker-build` job
 | `services` + docker-in-docker (`docker:dind`) | `docker-build` |
 | `tags` routing a job to a specific runner | `docker-build` (`dind`) |
 | Build + push to the built-in container registry (`$CI_REGISTRY_IMAGE`, `$CI_JOB_TOKEN`) | `docker-build` |
+| `spec:inputs` with `options`, `$[[ inputs.x ]]`, conditional `include:rules` | `greeting`, `lint-yaml` |
+
+### Modular job structure
+
+`ci/modular.yml` is a cut-down version of the layered pattern used in larger GitLab setups, where
+a shared "base project include" is consumed by many stacks. Three layers, each with one job:
+
+| Layer | Responsibility | Contains |
+|---|---|---|
+| `ci/modules/*.yml` | **route** -- decide *whether* and *which variant* to include | `spec:inputs` + `include:` with `rules:`. No job bodies. |
+| `ci/templates/*.yml` | **implement** | hidden `.jobs`, reused via `extends` |
+| `ci/jobs/*.yml` | **instantiate** | concrete jobs: `extends` a template, pick a stage |
+
+The consumer only sets flags:
+
+```yaml
+include:
+  - local: ci/modular.yml
+    inputs:
+      include_greeting: "true"      # false drops the greeting jobs entirely
+      include_lint: "true"
+      greeting_variant: "simple"    # or "fancy" -- swaps the implementation
+```
+
+Two things this buys you. `include_greeting: "false"` removes a whole feature set without
+touching any job definition. And `greeting_variant` swaps which `ci/templates/greeting_*.yml`
+defines `.greeting`, so behaviour changes while the job graph stays identical --
+`ci/jobs/greeting.yml` never mentions a variant.
+
+Check either with `just list` (job graph) or `just preview` (fully-resolved YAML).
+
+Note `ci/modular.yml` deliberately does not declare `stages:`. A real base include owns the
+stage list, but `stages` does not merge across included files -- the last definition wins -- so
+declaring it there would clobber the root pipeline's.
 
 ## Prerequisites
 

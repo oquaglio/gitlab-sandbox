@@ -1,0 +1,6 @@
+# Greeting implementation: simple.
+# Contract: define `.greeting` with a script. jobs/greeting.yml extends it.
+.greeting:
+  image: alpine:3.20
+  script:
+    - echo "hello from the $GREETING_VARIANT greeting module"
