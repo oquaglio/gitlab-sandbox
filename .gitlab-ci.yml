@@ -60,8 +60,10 @@ docker-build:
   tags: [dind]
   image: docker:27-cli
   services:
+    # No `alias:` — a docker:*-dind service is already reachable as `docker`
+    # via its image name, and setting it explicitly collides with that implicit
+    # alias ("alias is already in use by another service" in the job log).
     - name: docker:27-dind
-      alias: docker
       # The playpen registry is plain HTTP, so dind must be told to allow it.
       command: ["--insecure-registry=gitlab:5005"]
   variables:
