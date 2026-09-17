@@ -2,3 +2,7 @@
 .cache/
 dist/
 .env
+# Artifacts gitlab-ci-local copies into the working tree when running the
+# dotenv / child-pipeline jobs locally.
+build.env
+child-pipeline.yml

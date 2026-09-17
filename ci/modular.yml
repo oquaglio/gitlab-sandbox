@@ -18,8 +18,9 @@
 #
 # lint stays a plain boolean because it has one implementation and nothing to pick.
 #
-# A selector shared across SEVERAL modules (BHP's `asset`) is the opposite case and
-# belongs as its own input -- it is genuinely orthogonal to any one module's toggle.
+# A selector shared across SEVERAL modules (a target environment or region, say) is
+# the opposite case and belongs as its own input -- it is genuinely orthogonal to any
+# one module's toggle.
 spec:
   inputs:
     greeting:     { default: "simple", options: ["off", "simple", "fancy"], description: "Greeting module: off, or which implementation" }
@@ -46,7 +47,7 @@ include:
     rules:
       - if: '$[[ inputs.include_lint ]] == true'
 
-# NOTE: deliberately no `stages:` here. base_project_include owns the stage list,
-# but `stages` does not merge across included files -- the last definition wins --
-# so declaring it here would clobber .gitlab-ci.yml's. These jobs reuse the
-# stages already defined there.
+# NOTE: deliberately no `stages:` here. A shared entry point like this would normally
+# own the stage list, but `stages` does not merge across included files -- the last
+# definition wins -- so declaring it here would clobber .gitlab-ci.yml's. These jobs
+# reuse the stages already defined there.

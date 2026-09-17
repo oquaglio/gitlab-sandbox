@@ -45,11 +45,40 @@ Dockerfile                      # trivial image built by the `docker-build` job
 | `tags` routing a job to a specific runner | `docker-build` (`dind`) |
 | Build + push to the built-in container registry (`$CI_REGISTRY_IMAGE`, `$CI_JOB_TOKEN`) | `docker-build` |
 | `spec:inputs` with `options`, `$[[ inputs.x ]]`, conditional `include:rules` | `greeting`, `lint-yaml` |
+| `artifacts:reports:dotenv` -- pass computed **variables** between jobs | `generate-tag` -> `use-tag` |
+| Dynamic parent/child pipelines (`trigger:include:artifact`, `strategy: depend`) | `generate-child` -> `child` |
+
+### dotenv vs artifacts
+
+`artifacts:paths` moves **files** between jobs; `artifacts:reports:dotenv` moves **variables**.
+`generate-tag` computes a tag, writes `BUILD_TAG=...` to `build.env` and declares it as a dotenv
+report; `use-tag` then reads `$BUILD_TAG` as an ordinary CI variable -- no file reading, no
+`source`. It ends with `test -n "$BUILD_TAG"` so a missing report fails loudly instead of quietly
+echoing an empty string.
+
+### Parent/child pipelines
+
+`generate-child` **writes** a pipeline to `child-pipeline.yml` and publishes it as an artifact;
+the `child` job triggers it as a separate pipeline via `trigger:include:artifact`. The generated
+child includes the *same* `ci/modular.yml` with a different module selection, so one commit runs
+`greeting: "fancy"` in the child while the parent uses whatever `.gitlab-ci.yml` selects.
+
+`strategy: depend` makes the trigger job mirror the child's status; without it the parent goes
+green the moment the child is created, whatever the child then does.
+
+gitlab-ci-local's downstream-pipeline support is experimental, so `just job child` generates the
+child but cannot run it -- that part needs heavy mode. The generated config can still be checked
+locally on its own:
+
+```sh
+just job generate-child
+npx gitlab-ci-local --file child-pipeline.yml --list
+```
 
 ### Modular job structure
 
 `ci/modular.yml` is a cut-down version of the layered pattern used in larger GitLab setups, where
-a shared "base project include" is consumed by many stacks. Three layers, each with one job:
+a shared entry point is consumed by many projects. Three layers, each with one job:
 
 | Layer | Responsibility | Contains |
 |---|---|---|
@@ -78,8 +107,9 @@ be selected for a module that is off. Under two inputs, `include_greeting: false
 `greeting_variant: "fancy"` was legal and silently meaningless. `include_lint` stays a plain
 boolean because lint has one implementation and nothing to pick.
 
-The opposite case is a selector shared across *several* modules -- BHP's `asset` -- which belongs
-as its own input, because it genuinely is orthogonal to any one module's toggle.
+The opposite case is a selector shared across *several* modules -- a target environment or
+region, say -- which belongs as its own input, because it genuinely is orthogonal to any one
+module's toggle.
 
 Check either with `just list` (job graph) or `just preview` (fully-resolved YAML).
 
